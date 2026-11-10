@@ -1,0 +1,6 @@
+{
+  "name": "WBPSC Clerkship 2026 mock Q&A",
+  "description": "Interactive study dashboard and step-by-step solution guide for the WBPSC Clerkship Examination (Part-I) 2023-24 Session-III question paper across Booklet Series A, B, C, and D.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

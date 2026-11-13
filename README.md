@@ -2,9 +2,9 @@
 
 ## 🌐 Live Application
 
-👉 **[Launch WBPSC Clerkship 2026 mock Q&A (Live Production App)](https://wbpsc-clerkship-2026-mock-q-a-8916.vercel.app/)**
+👉 **[Launch WBPSC Clerkship 2026 mock Q&A (Live Production App)](https://wbpsc-clerkship-2026-mock-q-a.gourab-saheb100.workers.dev/)**
 
-Direct URL: [https://wbpsc-clerkship-2026-mock-q-a-8916.vercel.app/](https://wbpsc-clerkship-2026-mock-q-a-8916.vercel.app/)
+Direct URL: [https://wbpsc-clerkship-2026-mock-q-a.gourab-saheb100.workers.dev/](https://wbpsc-clerkship-2026-mock-q-a.gourab-saheb100.workers.dev/)
 
 ---
 

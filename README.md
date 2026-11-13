@@ -10,7 +10,7 @@ Direct URL: [https://wbpsc-clerkship-2026-mock-q-a.gourab-saheb100.workers.dev/]
 
 ## Overview
 
-**WBPSC Clerkship 2026 mock Q&A** ([https://wbpsc-clerkship-2026-mock-q-a-8916.vercel.app/](https://wbpsc-clerkship-2026-mock-q-a-8916.vercel.app/)) is an interactive study and solution dashboard covering **11 official West Bengal Public Service Commission (WBPSC) Clerkship question papers (2015–2024)** across both **Part-I (Preliminary Objective MCQ)** and **Part-II (Mains Descriptive)** examination stages.
+**WBPSC Clerkship 2026 mock Q&A** ([https://wbpsc-clerkship-2026-mock-q-a.gourab-saheb100.workers.dev/](https://wbpsc-clerkship-2026-mock-q-a.gourab-saheb100.workers.dev/)) is an interactive study and solution dashboard covering **11 official West Bengal Public Service Commission (WBPSC) Clerkship question papers (2015–2024)** across both **Part-I (Preliminary Objective MCQ)** and **Part-II (Mains Descriptive)** examination stages.
 
 All **524 unique parent questions** (**531 total prompts** including nested sub-parts `1a` / `1b`) are organized, categorized, and solved:
 - **500 / 500 Preliminary Objective Questions** (`100/100` across all 5 shifts: 2024 Shift-1 `SLA/23`, 2024 Shift-2 `SLB/23`, 2024 Shift-3 `SLC/23`, 2020 Shift-1 `DBF/19`, and 2020 Shift-2 `BDA/19`).

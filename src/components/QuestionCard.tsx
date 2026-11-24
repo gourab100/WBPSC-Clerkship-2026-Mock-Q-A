@@ -266,9 +266,18 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="flex items-start justify-between gap-3">
           <button
             type="button"
-            onClick={() => onToggleExpand(question.id)}
+            onClick={() => {
+              if (!isDescriptive && !isAttempted && !isExpanded) {
+                return;
+              }
+              onToggleExpand(question.id);
+            }}
             aria-expanded={isExpanded}
-            className="flex-1 flex items-center justify-between gap-3 text-left text-xs sm:text-sm text-slate-700 hover:text-slate-950 transition-colors cursor-pointer"
+            className={`flex-1 flex items-center justify-between gap-3 text-left text-xs sm:text-sm transition-colors ${
+              !isDescriptive && !isAttempted && !isExpanded
+                ? 'text-slate-500 cursor-default'
+                : 'text-slate-700 hover:text-slate-950 cursor-pointer'
+            }`}
           >
             <div className="line-clamp-2 leading-relaxed">
               <strong className="font-extrabold text-slate-900">
@@ -279,16 +288,18 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
                   ? briefExplanationPreview
                   : isDescriptive
                   ? 'Click to expand structured outline, key themes, and sample response...'
-                  : 'Select an option or click to reveal verified explanation...'}
+                  : 'Select an option (A, B, C, or D) above to reveal the correct answer and explanation...'}
               </span>
             </div>
-            <span className="p-1 rounded-lg bg-slate-100 text-slate-700 shrink-0">
-              {isExpanded ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
-            </span>
+            {(isDescriptive || isAttempted || isExpanded) && (
+              <span className="p-1 rounded-lg bg-slate-100 text-slate-700 shrink-0">
+                {isExpanded ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </span>
+            )}
           </button>
 
           {isAttempted && (

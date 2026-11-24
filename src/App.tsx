@@ -354,7 +354,7 @@ export default function App() {
   const [pageSize] = useState<number>(20);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
-    () => new Set(['q-math-31', 'mains-2024-q1', 'sla23-q31'])
+    () => new Set()
   );
   const [userAnswers, setUserAnswers] = useState<Record<string, OptionKey>>({});
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
@@ -675,6 +675,7 @@ export default function App() {
     setAttemptFilter('all');
     setCurrentPage(1);
     setUserAnswers({});
+    setExpandedIds(new Set());
     setBookmarkedIds(new Set());
     setCompletedMockTestNumbers([]);
     setSavedMockAttempts([]);
@@ -912,6 +913,11 @@ export default function App() {
       ...prev,
       [id]: option,
     }));
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
   };
 
   const handleClearOption = (id: string) => {
@@ -920,10 +926,16 @@ export default function App() {
       delete next[id];
       return next;
     });
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   };
 
   const handleResetAllAnswers = () => {
     setUserAnswers({});
+    setExpandedIds(new Set());
   };
 
   const handleToggleBookmark = (id: string) => {

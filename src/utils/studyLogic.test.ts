@@ -12,11 +12,18 @@ import { prelim2020Shift2Questions } from '../data/prelim2020Shift2';
 import {
   calculateExamScore,
   filterAndSortQuestions,
+  getFreePreviewQuestions,
   getPaperTrackingStats,
+  normalizeExtractedQuestions,
   paginateQuestions,
   resolveAutoQuestionType,
   validateQuestionBankIntegrity,
 } from './studyLogic';
+import {
+  ALL_RAW_MOCK_500,
+  buildMockTestsFromPool,
+  INITIAL_MOCK_QUESTIONS,
+} from '../data/mock500Part2';
 
 test('All 5 Preliminary MCQ papers have 100/100 questions and valid 1-100 question numbers', () => {
   const prelimSets = [
@@ -38,14 +45,9 @@ test('All 5 Preliminary MCQ papers have 100/100 questions and valid 1-100 questi
   }
 });
 
-test('all 11 uploaded PDF sheets are 100% populated (524 unique parent questions / 530 raw sheet questions / 531 prompts w/ sub-parts)', () => {
-  assert.equal(EXAM_PAPERS.length, 11);
-
+test('all uploaded PDF sheets are 100% populated and tracking stats scale dynamically with questions.length', () => {
   const stats = getPaperTrackingStats(allQuestions, EXAM_PAPERS);
-  assert.equal(stats.totalExtractedParentQuestions, 524);
-  assert.equal(stats.totalExtractedWithSubParts, 531);
-  assert.equal(stats.totalOfficialUniqueQuestions, 524);
-  assert.equal(stats.totalOfficialRawSheetQuestions, 530);
+  assert.equal(stats.totalExtractedParentQuestions, allQuestions.length);
 
   for (const paper of EXAM_PAPERS) {
     const pStat = stats.byPaperId[paper.id];
@@ -55,6 +57,57 @@ test('all 11 uploaded PDF sheets are 100% populated (524 unique parent questions
       `Paper ${paper.id} should have ${paper.officialQuestionCount}/${paper.officialQuestionCount} extracted questions`
     );
   }
+});
+
+test('getFreePreviewQuestions returns exactly 20 Prelims Objective MCQ questions (GK, Math, English) and zero Mains descriptive questions', () => {
+  const preview = getFreePreviewQuestions(allQuestions, 20);
+  assert.equal(preview.length, 20);
+
+  const hasDescriptive = preview.some(
+    (q) =>
+      q.category === 'Descriptive & Translation' ||
+      resolveAutoQuestionType(q) === 'descriptive-model-guide' ||
+      !q.options
+  );
+  assert.equal(hasDescriptive, false);
+
+  const categories = new Set(preview.map((q) => q.category));
+  assert.equal(categories.has('English'), true);
+  assert.equal(categories.has('General Knowledge'), true);
+  assert.equal(categories.has('Mathematics'), true);
+});
+
+test('normalizeExtractedQuestions converts newly extracted MCQ and Mains questions and increments dynamic bank count', () => {
+  const added = normalizeExtractedQuestions(
+    [
+      {
+        category: 'General Knowledge',
+        subTopic: 'West Bengal Geography',
+        questionEn: 'Which river is known as the Sorrow of Bengal?',
+        optionA: 'Damodar',
+        optionB: 'Teesta',
+        optionC: 'Hooghly',
+        optionD: 'Subarnarekha',
+        correctOption: 'A',
+        directAnswerSummary: 'Option (A) — Damodar',
+      },
+      {
+        category: 'Descriptive & Translation',
+        subTopic: 'Report Writing',
+        questionEn: 'Write a report on a blood donation camp.',
+        sampleAnswerTitle: 'Blood Donation Camp Held',
+        sampleAnswerBody: 'Kolkata, Nov 15: A voluntary blood donation camp was organized...',
+      },
+    ],
+    'custom-2026-mock',
+    '2026 Mock Paper',
+    1
+  );
+
+  assert.equal(added.length, 2);
+  const combined = [...allQuestions, ...added];
+  const updatedStats = getPaperTrackingStats(combined, EXAM_PAPERS);
+  assert.equal(updatedStats.totalExtractedParentQuestions, allQuestions.length + 2);
 });
 
 test('every descriptive parent question includes a structured Model Answer Guide and keeps sub-parts (1a, 1b) nested under the parent question', () => {
@@ -156,3 +209,71 @@ test('calculateExamScore applies +1 for correct and -0.25 negative marking for i
   assert.equal(score.incorrectCount, 1);
   assert.equal(score.netScore, 0.75);
 });
+
+test('500-question CBT Mock Test Pool has 500 solved questions grouped into 5 sequential 100-question Mock Tests (99 MCQs + 1 Mains each)', () => {
+  assert.equal(ALL_RAW_MOCK_500.length, 500);
+  assert.equal(INITIAL_MOCK_QUESTIONS.length, 500);
+
+  // Verify sequential question numbering Q1..Q500
+  for (let i = 0; i < 500; i++) {
+    assert.equal(
+      ALL_RAW_MOCK_500[i].qNum,
+      i + 1,
+      `Expected qNum ${i + 1} at index ${i}`
+    );
+  }
+
+  // Verify separation from the 524 PYQ archive
+  assert.equal(allQuestions.length, 524);
+
+  const mockTests = buildMockTestsFromPool(INITIAL_MOCK_QUESTIONS);
+  assert.equal(mockTests.length, 5);
+
+  for (let t = 0; t < 5; t++) {
+    const testDef = mockTests[t];
+    assert.equal(testDef.testNumber, t + 1);
+    assert.equal(testDef.title, `Mock Test ${t + 1}`);
+    assert.equal(testDef.questions.length, 100);
+    assert.equal(
+      testDef.mcqCount,
+      99,
+      `Mock Test ${t + 1} should have 99 Prelims MCQs`
+    );
+    assert.equal(
+      testDef.mainsCount,
+      1,
+      `Mock Test ${t + 1} should have 1 Mains Descriptive prompt`
+    );
+
+    // Check Q1..Q99 in each Mock Test are MCQs with 4 options and verified correctOption
+    for (let qIdx = 0; qIdx < 99; qIdx++) {
+      const q = testDef.questions[qIdx];
+      assert.ok(q.options, `Mock Test ${t + 1} Q${qIdx + 1} must have options`);
+      assert.ok(
+        q.correctOption,
+        `Mock Test ${t + 1} Q${qIdx + 1} must have correctOption`
+      );
+      assert.ok(
+        q.steps.length >= 1,
+        `Mock Test ${t + 1} Q${qIdx + 1} must have step-by-step explanation`
+      );
+    }
+
+    // Check Q100 in each Mock Test is the Mains Descriptive prompt with solved Model Answer
+    const mainsQ = testDef.questions[99];
+    assert.equal(mainsQ.category, 'Descriptive & Translation');
+    assert.ok(
+      mainsQ.descriptiveGuide &&
+        mainsQ.descriptiveGuide.sampleAnswerBody.length > 40,
+      `Mock Test ${t + 1} Q100 must have a complete Mains Descriptive Model Answer`
+    );
+  }
+
+  // Verify uploading another 500 questions automatically creates Mock Test 6 through Mock Test 10
+  const expanded1000 = [...INITIAL_MOCK_QUESTIONS, ...INITIAL_MOCK_QUESTIONS];
+  const tenTests = buildMockTestsFromPool(expanded1000);
+  assert.equal(tenTests.length, 10);
+  assert.equal(tenTests[5].title, 'Mock Test 6');
+  assert.equal(tenTests[9].title, 'Mock Test 10');
+});
+

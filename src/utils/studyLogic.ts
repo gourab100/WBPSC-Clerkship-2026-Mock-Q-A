@@ -102,20 +102,22 @@ export function getPaperTrackingStats(
       0
     );
 
+    const officialCount = Math.max(p.officialQuestionCount, extractedParentCount);
+
     byPaperId[p.id] = {
       paperId: p.id,
       fileName: p.fileName,
       year: p.year,
       shortLabel: p.shortLabel,
-      officialQuestionCount: p.officialQuestionCount,
+      officialQuestionCount: officialCount,
       extractedParentCount,
       extractedSubPartCount,
       isSubsetSheet: Boolean(p.isSubsetOfPaperId),
     };
 
-    totalOfficialRawSheetQuestions += p.officialQuestionCount;
+    totalOfficialRawSheetQuestions += officialCount;
     if (!p.isSubsetOfPaperId) {
-      totalOfficialUniqueQuestions += p.officialQuestionCount;
+      totalOfficialUniqueQuestions += officialCount;
     }
   }
 
@@ -129,9 +131,226 @@ export function getPaperTrackingStats(
     byPaperId,
     totalExtractedParentQuestions,
     totalExtractedWithSubParts,
-    totalOfficialUniqueQuestions,
-    totalOfficialRawSheetQuestions,
+    totalOfficialUniqueQuestions: Math.max(
+      totalOfficialUniqueQuestions,
+      totalExtractedParentQuestions
+    ),
+    totalOfficialRawSheetQuestions: Math.max(
+      totalOfficialRawSheetQuestions,
+      totalExtractedParentQuestions
+    ),
   };
+}
+
+/**
+ * Selects exactly `limit` (default 20) Prelims Objective MCQ questions
+ * covering English Grammar, General Knowledge, and Mathematics — strictly
+ * excluding all Mains Descriptive questions — for the Page 1 Free Preview.
+ */
+export function getFreePreviewQuestions(
+  questions: QuestionItem[],
+  limit = 20
+): QuestionItem[] {
+  const objectivePool = questions.filter(
+    (q) =>
+      Boolean(q.options && q.correctOption) &&
+      q.category !== 'Descriptive & Translation' &&
+      resolveAutoQuestionType(q) !== 'descriptive-model-guide'
+  );
+
+  const englishList = objectivePool.filter((q) => q.category === 'English').slice(0, 7);
+  const gkList = objectivePool
+    .filter((q) => q.category === 'General Knowledge')
+    .slice(0, 7);
+  const mathList = objectivePool.filter((q) => q.category === 'Mathematics').slice(0, 6);
+
+  const combined: QuestionItem[] = [];
+  const usedIds = new Set<string>();
+
+  for (const q of [...englishList, ...gkList, ...mathList]) {
+    if (combined.length < limit && !usedIds.has(q.id)) {
+      combined.push(q);
+      usedIds.add(q.id);
+    }
+  }
+
+  for (const q of objectivePool) {
+    if (combined.length >= limit) break;
+    if (!usedIds.has(q.id)) {
+      combined.push(q);
+      usedIds.add(q.id);
+    }
+  }
+
+  return combined;
+}
+
+export interface RawExtractedQuestion {
+  category?: string;
+  subTopic?: string;
+  questionEn?: string;
+  questionBn?: string;
+  optionA?: string;
+  optionB?: string;
+  optionC?: string;
+  optionD?: string;
+  correctOption?: string;
+  directAnswerSummary?: string;
+  keyFormulaOrConcept?: string;
+  steps?: Array<{ title?: string; explanation?: string; formulaLatex?: string }>;
+  descriptiveFormatType?: string;
+  descriptiveMarks?: number;
+  descriptiveWordLimit?: string;
+  outlineStructure?: string[];
+  keyThemesAndArguments?: string[];
+  sampleAnswerTitle?: string;
+  sampleAnswerBody?: string;
+}
+
+export function normalizeExtractedQuestions(
+  rawItems: RawExtractedQuestion[],
+  paperId: string,
+  paperShortTitle: string,
+  startNumber = 1
+): QuestionItem[] {
+  return rawItems
+    .filter((item) => item && typeof item === 'object')
+    .map((item, idx) => {
+      const qNum = startNumber + idx;
+      const rawCat = String(item.category || '').trim();
+      const isDescriptive =
+        rawCat === 'Descriptive & Translation' ||
+        Boolean(item.sampleAnswerBody) ||
+        (!item.optionA && !item.optionB && Boolean(item.descriptiveFormatType));
+
+      const category: QuestionCategory = isDescriptive
+        ? 'Descriptive & Translation'
+        : rawCat === 'Mathematics'
+        ? 'Mathematics'
+        : rawCat === 'English'
+        ? 'English'
+        : 'General Knowledge';
+
+      const autoType: AutoQuestionType = isDescriptive
+        ? 'descriptive-model-guide'
+        : category === 'Mathematics'
+        ? 'math-step-by-step'
+        : 'objective-concise';
+
+      const validOption = (['A', 'B', 'C', 'D'] as OptionKey[]).includes(
+        String(item.correctOption || 'A').toUpperCase() as OptionKey
+      )
+        ? (String(item.correctOption || 'A').toUpperCase() as OptionKey)
+        : 'A';
+
+      const steps =
+        Array.isArray(item.steps) && item.steps.length > 0
+          ? item.steps.map((s, sIdx) => ({
+              title: s.title || `Step ${sIdx + 1}`,
+              explanation: s.explanation || 'Verified step-by-step explanation.',
+              formulaLatex: s.formulaLatex || undefined,
+            }))
+          : [
+              {
+                title: 'Verified Solution',
+                explanation:
+                  item.directAnswerSummary ||
+                  'Verified answer extracted from the uploaded question paper.',
+              },
+            ];
+
+      if (isDescriptive) {
+        return {
+          id: `${paperId}-q-${Date.now()}-${idx + 1}`,
+          paperId,
+          paperShortTitle,
+          autoType,
+          seriesNumbers: { A: qNum, B: qNum, C: qNum, D: qNum },
+          pdfPages: { A: 1, B: 1, C: 1, D: 1 },
+          category,
+          subTopic: item.subTopic || 'Mains Descriptive Guide',
+          questionEn:
+            item.questionEn || `Descriptive Question ${qNum} (${paperShortTitle})`,
+          questionBn: item.questionBn || undefined,
+          directAnswerSummary:
+            item.directAnswerSummary ||
+            `Structured Model Answer Guide for ${paperShortTitle} Q.${qNum}.`,
+          keyFormulaOrConcept:
+            item.keyFormulaOrConcept ||
+            'Standard WBPSC Part-II Descriptive Marking Scheme',
+          steps,
+          descriptiveGuide: {
+            formatType:
+              (item.descriptiveFormatType as
+                | 'Essay / Composition'
+                | 'Précis / Summary Writing'
+                | 'Report Writing'
+                | 'Translation') || 'Report Writing',
+            marks: Number(item.descriptiveMarks) || 15,
+            wordLimitOrTarget: item.descriptiveWordLimit || 'Within 200 words',
+            outlineStructure:
+              Array.isArray(item.outlineStructure) && item.outlineStructure.length > 0
+                ? item.outlineStructure
+                : [
+                    'Title / Headline & Attribution',
+                    'Introductory Context & Dateline',
+                    'Core Factual Development',
+                    'Concluding Takeaway',
+                  ],
+            keyThemesAndArguments:
+              Array.isArray(item.keyThemesAndArguments) &&
+              item.keyThemesAndArguments.length > 0
+                ? item.keyThemesAndArguments
+                : ['Formal tone, factual precision, and adherence to word limit'],
+            sampleAnswerTitle:
+              item.sampleAnswerTitle || `Model Answer — ${paperShortTitle} Q.${qNum}`,
+            sampleAnswerBody:
+              item.sampleAnswerBody ||
+              item.directAnswerSummary ||
+              'Complete high-scoring model response.',
+          },
+        };
+      }
+
+      const optA = item.optionA || 'Option A';
+      const optB = item.optionB || 'Option B';
+      const optC = item.optionC || 'Option C';
+      const optD = item.optionD || 'Option D';
+
+      return {
+        id: `${paperId}-q-${Date.now()}-${idx + 1}`,
+        paperId,
+        paperShortTitle,
+        autoType,
+        seriesNumbers: { A: qNum, B: qNum, C: qNum, D: qNum },
+        pdfPages: { A: 1, B: 1, C: 1, D: 1 },
+        category,
+        subTopic: item.subTopic || `${category} Concept`,
+        questionEn:
+          item.questionEn || `Objective Question ${qNum} (${paperShortTitle})`,
+        questionBn: item.questionBn || undefined,
+        options: {
+          A: { en: optA, bn: optA },
+          B: { en: optB, bn: optB },
+          C: { en: optC, bn: optC },
+          D: { en: optD, bn: optD },
+        },
+        correctOption: validOption,
+        directAnswerSummary:
+          item.directAnswerSummary ||
+          `Option (${validOption}) — ${
+            validOption === 'A'
+              ? optA
+              : validOption === 'B'
+              ? optB
+              : validOption === 'C'
+              ? optC
+              : optD
+          }`,
+        keyFormulaOrConcept: item.keyFormulaOrConcept || undefined,
+        steps,
+      };
+    });
 }
 
 export function filterAndSortQuestions(

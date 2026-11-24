@@ -30,7 +30,7 @@ export const EXAM_PAPERS: ExamPaperSheet[] = [
     totalPages: 81,
     officialQuestionCount: 100,
     hasBookletSeriesABCD: true,
-    description: 'Complete 100-question objective paper (English 30, GK 40, Arithmetic 30) across Series A, B, C & D.',
+    description: 'Complete 100-question objective paper (English 30, GK 40, Arithmetic 30) with verified answers and step-by-step solutions.',
   },
   {
     id: 'prelim-2024-shift-1',

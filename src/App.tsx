@@ -317,6 +317,22 @@ export default function App() {
   const [profileDropdownOpen, setProfileDropdownOpen] =
     useState<boolean>(false);
   const [adminModalOpen, setAdminModalOpen] = useState<boolean>(false);
+  const [isExamInProgress, setIsExamInProgress] = useState<boolean>(false);
+  const [examLockNotice, setExamLockNotice] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!examLockNotice) return;
+    const timer = window.setTimeout(() => {
+      setExamLockNotice(false);
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [examLockNotice]);
+
+  useEffect(() => {
+    if (!isExamInProgress) {
+      setExamLockNotice(false);
+    }
+  }, [isExamInProgress]);
 
   // CRITICAL RULE: Admin privileges apply ONLY while active logged-in email === 'gourab.saheb100@gmail.com'
   const normalizedUserEmail = userEmail.trim().toLowerCase();
@@ -568,6 +584,10 @@ export default function App() {
    */
   const handleTriggerUnlockFlow = () => {
     setProfileDropdownOpen(false);
+    if (isExamInProgress) {
+      setExamLockNotice(true);
+      return;
+    }
     if (isUnlocked) {
       setPrimarySectionTab('pyq-archive');
       setActivePaperId('all');
@@ -585,12 +605,19 @@ export default function App() {
 
   /**
    * Strict Sidebar Section Navigation Handler:
-   * - ONLY 'demo-practice' is accessible to unpaid/logged-out visitors.
-   * - Clicking 'pyq-archive', 'cbt-mock-tests', or 'my-tests' when `!isUnlocked`
-   *   immediately blocks access and redirects to the Split-Screen Google Login & ₹100 QR Payment page.
+   * - While a Mock Test is actively running (`isExamInProgress === true`), lock all sidebar navigation items
+   *   and show the "Complete and submit your active Mock Test first." notice.
+   * - 'demo-practice', 'cbt-mock-tests' (with Free Mock Test 1), and 'my-tests' (for Free Mock Test 1 scorecards)
+   *   are accessible to all visitors when no exam is actively running.
+   * - Clicking 'pyq-archive' when `!isUnlocked` immediately blocks access and redirects
+   *   straight to the Split-Screen Google Login & ₹100 QR Payment page.
    */
   const handleNavigateSection = (targetTab: PrimarySectionTab) => {
     setProfileDropdownOpen(false);
+    if (isExamInProgress) {
+      setExamLockNotice(true);
+      return;
+    }
     if (targetTab === 'demo-practice') {
       setPrimarySectionTab('demo-practice');
       setActivePaperId('all');
@@ -603,7 +630,14 @@ export default function App() {
       return;
     }
 
-    // Strict Guard for 'pyq-archive', 'cbt-mock-tests', and 'my-tests'
+    if (targetTab === 'cbt-mock-tests' || targetTab === 'my-tests') {
+      setPrimarySectionTab(targetTab);
+      setViewMode('questions');
+      scrollToFeedTop();
+      return;
+    }
+
+    // Strict 100% Lock on 'pyq-archive' for Unpaid / Logged-Out Visitors
     if (!isUnlocked) {
       if (!userEmail.trim()) {
         setViewMode('signin');
@@ -1076,19 +1110,27 @@ export default function App() {
     : 'Free Preview';
 
   const topHeaderPageTitle =
-    viewMode === 'signin'
+    isExamInProgress
+      ? 'Active CBT Mock Test in Progress (Q1 to Q100)'
+      : viewMode === 'signin'
       ? 'Candidate Sign-In — Unlock Complete Exam Access'
       : viewMode === 'payment'
       ? '₹100 Google Pay / UPI QR Verification'
+      : primarySectionTab === 'cbt-mock-tests'
+      ? 'Computer-Based Mock Tests (Q1 to Q100)'
+      : primarySectionTab === 'my-tests'
+      ? 'My Test — Saved Scorecards & Attempt Review'
       : !isUnlocked || primarySectionTab === 'demo-practice'
       ? 'Demo & Practice Set (Free Sample Questions)'
       : primarySectionTab === 'pyq-archive'
       ? activePaperMeta
         ? activePaperMeta.title
         : 'Previous Year Questions — Year-Wise Papers'
-      : primarySectionTab === 'cbt-mock-tests'
-      ? 'Computer-Based Mock Tests (Q1 to Q100)'
-      : 'My Test — Saved Scorecards & Attempt Review';
+      : 'Demo & Practice Set (Free Sample Questions)';
+
+  const examLockTooltip = isExamInProgress
+    ? 'Complete and submit your active Mock Test first.'
+    : undefined;
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#EBEEF3] text-slate-900">
@@ -1104,11 +1146,14 @@ export default function App() {
           <div className="px-5 py-5 border-b border-white/10">
             <a
               href="#top"
+              title={examLockTooltip}
               onClick={(e) => {
                 e.preventDefault();
                 handleNavigateSection('demo-practice');
               }}
-              className="flex items-center gap-3 group"
+              className={`flex items-center gap-3 group ${
+                isExamInProgress ? 'cursor-not-allowed opacity-75' : ''
+              }`}
             >
               <div className="w-10 h-10 rounded-full bg-white/10 border border-amber-400/40 flex items-center justify-center text-lg shadow-xs shrink-0">
                 🏛️
@@ -1128,36 +1173,50 @@ export default function App() {
             aria-label="Primary Portal Navigation"
             className="p-3.5 space-y-1.5"
           >
-            {/* 1. Demo / Practice Set (Always Accessible) */}
+            {/* 1. Demo / Practice Set */}
             <button
               type="button"
               data-testid="tab-demo-practice"
+              aria-disabled={isExamInProgress}
+              title={examLockTooltip}
               onClick={() => handleNavigateSection('demo-practice')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer text-left ${
-                primarySectionTab === 'demo-practice' && viewMode === 'questions'
-                  ? 'bg-[#253655] text-white shadow-sm border border-white/10'
-                  : 'text-slate-300 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <Play className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Demo / Practice Set</span>
-            </button>
-
-            {/* 2. Previous Year Questions (100% Locked for Unpaid / Logged-Out Visitors) */}
-            <button
-              type="button"
-              data-testid="tab-pyq-archive"
-              onClick={() => handleNavigateSection('pyq-archive')}
-              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer text-left ${
-                isUnlocked &&
-                primarySectionTab === 'pyq-archive' &&
-                viewMode === 'questions'
-                  ? 'bg-[#253655] text-white shadow-sm border border-white/10'
-                  : 'text-slate-300 hover:bg-white/5 hover:text-white'
+              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-left ${
+                isExamInProgress
+                  ? 'opacity-50 cursor-not-allowed text-slate-400 bg-white/5'
+                  : primarySectionTab === 'demo-practice' &&
+                    viewMode === 'questions'
+                  ? 'bg-[#253655] text-white shadow-sm border border-white/10 cursor-pointer'
+                  : 'text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer'
               }`}
             >
               <span className="flex items-center gap-3 truncate">
-                {!isUnlocked ? (
+                <Play className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="truncate">Demo / Practice Set</span>
+              </span>
+              {isExamInProgress && (
+                <Lock className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+              )}
+            </button>
+
+            {/* 2. Previous Year Questions */}
+            <button
+              type="button"
+              data-testid="tab-pyq-archive"
+              aria-disabled={isExamInProgress}
+              title={examLockTooltip}
+              onClick={() => handleNavigateSection('pyq-archive')}
+              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-left ${
+                isExamInProgress
+                  ? 'opacity-50 cursor-not-allowed text-slate-400 bg-white/5'
+                  : isUnlocked &&
+                    primarySectionTab === 'pyq-archive' &&
+                    viewMode === 'questions'
+                  ? 'bg-[#253655] text-white shadow-sm border border-white/10 cursor-pointer'
+                  : 'text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer'
+              }`}
+            >
+              <span className="flex items-center gap-3 truncate">
+                {!isUnlocked || isExamInProgress ? (
                   <Lock className="w-4 h-4 text-amber-400 shrink-0" />
                 ) : (
                   <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1166,51 +1225,82 @@ export default function App() {
               </span>
             </button>
 
-            {/* 3. Mock Test (100% Locked for Unpaid / Logged-Out Visitors) */}
+            {/* 3. Mock Test (Accessible to All — Locked while an active Mock Test is in progress) */}
             <button
               type="button"
               data-testid="tab-cbt-mock-tests"
+              aria-disabled={isExamInProgress}
+              title={examLockTooltip}
               onClick={() => handleNavigateSection('cbt-mock-tests')}
-              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer text-left ${
-                isUnlocked &&
-                primarySectionTab === 'cbt-mock-tests' &&
-                viewMode === 'questions'
-                  ? 'bg-[#253655] text-white shadow-sm border border-white/10'
-                  : 'text-slate-300 hover:bg-white/5 hover:text-white'
+              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-left ${
+                isExamInProgress
+                  ? 'bg-[#253655]/80 text-amber-300 border border-amber-400/30 cursor-not-allowed'
+                  : primarySectionTab === 'cbt-mock-tests' &&
+                    viewMode === 'questions'
+                  ? 'bg-[#253655] text-white shadow-sm border border-white/10 cursor-pointer'
+                  : 'text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer'
               }`}
             >
               <span className="flex items-center gap-3 truncate">
-                {!isUnlocked ? (
-                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
-                ) : (
-                  <MonitorCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                )}
+                <MonitorCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span className="truncate">Mock Test</span>
               </span>
+              {isExamInProgress ? (
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-extrabold shrink-0">
+                  IN PROGRESS
+                </span>
+              ) : !isUnlocked ? (
+                <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-extrabold shrink-0">
+                  1 FREE
+                </span>
+              ) : null}
             </button>
 
-            {/* 4. My Test (100% Locked for Unpaid / Logged-Out Visitors) */}
+            {/* 4. My Test */}
             <button
               type="button"
               data-testid="tab-my-tests"
+              aria-disabled={isExamInProgress}
+              title={examLockTooltip}
               onClick={() => handleNavigateSection('my-tests')}
-              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer text-left ${
-                isUnlocked &&
-                primarySectionTab === 'my-tests' &&
-                viewMode === 'questions'
-                  ? 'bg-[#253655] text-white shadow-sm border border-white/10'
-                  : 'text-slate-300 hover:bg-white/5 hover:text-white'
+              className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all text-left ${
+                isExamInProgress
+                  ? 'opacity-50 cursor-not-allowed text-slate-400 bg-white/5'
+                  : primarySectionTab === 'my-tests' &&
+                    viewMode === 'questions'
+                  ? 'bg-[#253655] text-white shadow-sm border border-white/10 cursor-pointer'
+                  : 'text-slate-300 hover:bg-white/5 hover:text-white cursor-pointer'
               }`}
             >
               <span className="flex items-center gap-3 truncate">
-                {!isUnlocked ? (
-                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
-                ) : (
-                  <ClipboardCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                )}
+                <ClipboardCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span className="truncate">My Test</span>
               </span>
+              {isExamInProgress && (
+                <Lock className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+              )}
             </button>
+
+            {/* Active Exam Sidebar Lock Banner / Toast Notice */}
+            {isExamInProgress && (
+              <div
+                data-testid="sidebar-exam-lock-notice"
+                role="status"
+                className={`mt-3 p-3 rounded-xl border text-xs leading-relaxed transition-all ${
+                  examLockNotice
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-md ring-2 ring-amber-400/40'
+                    : 'bg-slate-900/60 border-white/10 text-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-extrabold text-amber-300 mb-0.5">
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                  <span>Exam Navigation Locked</span>
+                </div>
+                <p data-testid="exam-lock-toast-text">
+                  Complete and submit your active Mock Test first.
+                </p>
+              </div>
+            )}
 
             {/* Invisible Admin Controls in Sidebar — Appears ONLY when gourab.saheb100@gmail.com is logged in */}
             {isAdminUser && (
@@ -1234,8 +1324,14 @@ export default function App() {
           {!isUnlocked ? (
             <button
               type="button"
+              aria-disabled={isExamInProgress}
+              title={examLockTooltip}
               onClick={handleTriggerUnlockFlow}
-              className="w-full py-2.5 px-3 rounded-xl bg-[#F5A623] hover:bg-[#E09112] text-slate-950 font-extrabold text-xs shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs shadow-sm transition-colors flex items-center justify-center gap-1.5 ${
+                isExamInProgress
+                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-60'
+                  : 'bg-[#F5A623] hover:bg-[#E09112] text-slate-950 cursor-pointer'
+              }`}
             >
               <Lock className="w-3.5 h-3.5" />
               <span>Unlock Full Portal (₹100)</span>
@@ -1293,11 +1389,21 @@ export default function App() {
               <button
                 type="button"
                 data-testid="top-nav-signin-btn"
+                aria-disabled={isExamInProgress}
+                title={examLockTooltip}
                 onClick={() => {
+                  if (isExamInProgress) {
+                    setExamLockNotice(true);
+                    return;
+                  }
                   setViewMode('signin');
                   scrollToFeedTop();
                 }}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-extrabold bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 shadow-2xs transition-all whitespace-nowrap shrink-0 cursor-pointer"
+                className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-extrabold border shadow-2xs transition-all whitespace-nowrap shrink-0 ${
+                  isExamInProgress
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                    : 'bg-white hover:bg-slate-50 text-slate-900 border-slate-300 cursor-pointer'
+                }`}
               >
                 <GoogleGLogo className="w-3.5 h-3.5" />
                 <span>Sign in with Google</span>
@@ -1307,8 +1413,20 @@ export default function App() {
                 <button
                   type="button"
                   data-testid="top-nav-profile-btn"
-                  onClick={() => setProfileDropdownOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-300 text-slate-900 hover:bg-slate-200 transition-colors whitespace-nowrap cursor-pointer"
+                  aria-disabled={isExamInProgress}
+                  title={examLockTooltip}
+                  onClick={() => {
+                    if (isExamInProgress) {
+                      setExamLockNotice(true);
+                      return;
+                    }
+                    setProfileDropdownOpen((prev) => !prev);
+                  }}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap ${
+                    isExamInProgress
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-100 border-slate-300 text-slate-900 hover:bg-slate-200 cursor-pointer'
+                  }`}
                 >
                   <User className="w-3.5 h-3.5 text-[#162238]" />
                   <span>Profile</span>
@@ -1402,6 +1520,27 @@ export default function App() {
           </div>
         </header>
 
+        {/* Floating Top Notice when user clicks a locked sidebar tab during an active Mock Test */}
+        {isExamInProgress && examLockNotice && (
+          <div
+            data-testid="active-exam-lock-toast"
+            role="alert"
+            className="mx-4 sm:mx-8 mt-4 px-4 py-3 rounded-2xl bg-[#162238] text-amber-300 border border-amber-400/50 shadow-lg flex items-center justify-between gap-3 text-xs sm:text-sm font-extrabold"
+          >
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Complete and submit your active Mock Test first.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExamLockNotice(false)}
+              className="text-xs text-slate-300 hover:text-white underline cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Main Content Canvas */}
         <main
           id="top"
@@ -1449,10 +1588,39 @@ export default function App() {
                 />
               )}
             </div>
+          ) : primarySectionTab === 'cbt-mock-tests' ||
+            primarySectionTab === 'my-tests' ? (
+            /* =================================================================
+               SCREEN 4 & 5: MOCK TEST & MY TEST
+               - Accessible to all visitors!
+               - Mock Test 1 (100 Questions) is FREE & Unlocked for everyone.
+               - Mock Test 2, 3, 4, 5+ are Strictly LOCKED for unpaid users (clicking redirects to Login & ₹100 Unlock Page).
+               ================================================================= */
+            <MockCbtExamView
+              mockQuestions={dynamicMockQuestions}
+              activeSubTab={
+                primarySectionTab === 'my-tests' ? 'my-tests' : 'cbt-lobby'
+              }
+              onChangeSubTab={(sub) =>
+                setPrimarySectionTab(
+                  sub === 'my-tests' ? 'my-tests' : 'cbt-mock-tests'
+                )
+              }
+              hasFullAccess={isUnlocked}
+              isAdminBypassActive={
+                isAdminAuthenticated && !adminPreviewFreeMode
+              }
+              userEmail={displayAccountEmail}
+              userName={userName}
+              onRequirePaidAccess={handleTriggerUnlockFlow}
+              completedTestNumbers={completedMockTestNumbers}
+              savedAttempts={savedMockAttempts}
+              onRecordCompletedAttempt={handleRecordCompletedMockAttempt}
+              onExamInProgressChange={setIsExamInProgress}
+            />
           ) : !isUnlocked || primarySectionTab === 'demo-practice' ? (
             /* =================================================================
                SCREEN 1: DEMO / PRACTICE SET (LANDING PAGE — MATCHES IMAGE 1)
-               ONLY section accessible to unpaid/logged-out visitors.
                ================================================================= */
             <div id="question-feed-top" className="space-y-6">
               {/* Two-Column Grid of White Rounded MCQ Cards (Matches Image 1) */}
@@ -1490,32 +1658,6 @@ export default function App() {
                 }
               />
             </div>
-          ) : primarySectionTab === 'cbt-mock-tests' ||
-            primarySectionTab === 'my-tests' ? (
-            /* =================================================================
-               SCREEN 4 & 5: MOCK TEST & MY TEST (STRICTLY FOR UNLOCKED USERS)
-               ================================================================= */
-            <MockCbtExamView
-              mockQuestions={dynamicMockQuestions}
-              activeSubTab={
-                primarySectionTab === 'my-tests' ? 'my-tests' : 'cbt-lobby'
-              }
-              onChangeSubTab={(sub) =>
-                setPrimarySectionTab(
-                  sub === 'my-tests' ? 'my-tests' : 'cbt-mock-tests'
-                )
-              }
-              hasFullAccess={isUnlocked}
-              isAdminBypassActive={
-                isAdminAuthenticated && !adminPreviewFreeMode
-              }
-              userEmail={displayAccountEmail}
-              userName={userName}
-              onRequirePaidAccess={handleTriggerUnlockFlow}
-              completedTestNumbers={completedMockTestNumbers}
-              savedAttempts={savedMockAttempts}
-              onRecordCompletedAttempt={handleRecordCompletedMockAttempt}
-            />
           ) : activePaperId === 'all' ? (
             /* =================================================================
                SCREEN 3A: PREVIOUS YEAR QUESTIONS — YEAR-WISE / PAPER-WISE CARDS

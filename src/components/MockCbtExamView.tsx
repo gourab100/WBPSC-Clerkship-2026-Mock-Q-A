@@ -59,6 +59,7 @@ interface MockCbtExamViewProps {
   completedTestNumbers: number[];
   savedAttempts: MockTestAttemptRecord[];
   onRecordCompletedAttempt: (attempt: MockTestAttemptRecord) => void;
+  onExamInProgressChange?: (inProgress: boolean) => void;
 }
 
 const OPTION_KEYS: OptionKey[] = ['A', 'B', 'C', 'D'];
@@ -75,6 +76,7 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
   completedTestNumbers,
   savedAttempts,
   onRecordCompletedAttempt,
+  onExamInProgressChange,
 }) => {
   // Dynamically group into 100-question Mock Tests via Math.ceil(mockQuestions.length / 100)
   const mockTests = useMemo(
@@ -95,6 +97,15 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
   const [flaggedIds, setFlaggedIds] = useState<Record<string, boolean>>({});
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState<boolean>(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState<boolean>(false);
+
+  // Sync active exam state with parent App so sidebar navigation is locked while an exam is running
+  useEffect(() => {
+    onExamInProgressChange?.(Boolean(activeTest));
+    return () => {
+      onExamInProgressChange?.(false);
+    };
+  }, [activeTest, onExamInProgressChange]);
 
   // Detailed solution inspection state inside "My Test"
   const [inspectingAttemptId, setInspectingAttemptId] = useState<string | null>(
@@ -124,6 +135,8 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
   const isTestUnlocked = (testNumber: number): boolean => {
     if (isAdminBypassActive) return true;
     if (testNumber === 1) return true;
+    // Mock Tests 2+ are strictly locked for unpaid visitors
+    if (!hasFullAccess) return false;
     return (
       completedTestNumbers.includes(testNumber - 1) ||
       testNumber <= highestUnlockedTestNumber
@@ -154,6 +167,7 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
     setFlaggedIds({});
     setElapsedSeconds(0);
     setShowSubmitConfirm(false);
+    setShowQuitConfirm(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -295,8 +309,10 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
     };
 
     onRecordCompletedAttempt(attemptRecord);
+    onExamInProgressChange?.(false);
     setActiveTest(null);
     setShowSubmitConfirm(false);
+    setShowQuitConfirm(false);
     setInspectingAttemptId(attemptRecord.attemptId);
     setSolutionFilter('ATTEMPTED');
     onChangeSubTab('my-tests');
@@ -411,10 +427,11 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveTest(null)}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 cursor-pointer"
+              data-testid="cbt-quit-abandon-btn"
+              onClick={() => setShowQuitConfirm(true)}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-200 text-xs font-bold border border-slate-700 hover:border-rose-500/50 transition-colors cursor-pointer"
             >
-              Exit Test
+              Quit / Abandon Test
             </button>
           </div>
         </div>
@@ -788,6 +805,58 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Quit / Abandon Test Confirmation Modal */}
+        {showQuitConfirm && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div
+              data-testid="cbt-quit-confirm-modal"
+              className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                  <XCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900">
+                    Quit / Abandon {activeTest.title}?
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    If you abandon now, your current progress will not be saved.
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                To save your scorecard and review your attempted answers in{' '}
+                <strong>My Test</strong>, click{' '}
+                <strong>Finish &amp; Submit Test</strong> instead.
+              </p>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  data-testid="cbt-cancel-quit-btn"
+                  onClick={() => setShowQuitConfirm(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 cursor-pointer"
+                >
+                  Resume Exam
+                </button>
+                <button
+                  type="button"
+                  data-testid="cbt-confirm-quit-btn"
+                  onClick={() => {
+                    setShowQuitConfirm(false);
+                    setActiveTest(null);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold shadow-md cursor-pointer"
+                >
+                  Confirm Quit &amp; Abandon
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -884,23 +953,37 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
 
         {savedAttempts.length === 0 ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mx-auto">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center mx-auto">
               <ClipboardCheck className="w-7 h-7" />
             </div>
             <h3 className="text-lg font-extrabold text-slate-900">
               No Mock Test Attempts Yet
             </h3>
             <p className="text-sm text-slate-600 max-w-md mx-auto">
-              Start <strong>Mock Test 1</strong> and submit your test to review
-              your attempted questions and scorecard here.
+              Start <strong>Free Mock Test 1 (100 Questions)</strong> and submit
+              your exam to review your scorecard and attempted question
+              solutions here.
             </p>
-            <button
-              type="button"
-              onClick={() => onChangeSubTab('cbt-lobby')}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0B1528] text-amber-300 font-extrabold text-xs sm:text-sm cursor-pointer"
-            >
-              Open Mock Tests
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+              {mockTests[0] && (
+                <button
+                  type="button"
+                  data-testid="my-test-start-free-mock-1-btn"
+                  onClick={() => handleStartMockTest(mockTests[0])}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-sm transition-colors cursor-pointer"
+                >
+                  <Play className="w-4 h-4" />
+                  Start Free Mock Test 1
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onChangeSubTab('cbt-lobby')}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0B1528] text-amber-300 font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                View All Mock Tests
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1287,6 +1370,9 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
       {/* Clean Grid of Self-Contained Q1 to Q100 Mock Test Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {mockTests.map((test) => {
+          const isFreeTest = test.testNumber === 1;
+          const isLockedByPaywall =
+            !hasFullAccess && !isAdminBypassActive && test.testNumber > 1;
           const unlocked = isTestUnlocked(test.testNumber);
           const isCompleted = completedTestNumbers.includes(test.testNumber);
           const bestAttempt = savedAttempts
@@ -1297,25 +1383,43 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
             <div
               key={test.testId}
               data-testid={`mock-test-card-${test.testNumber}`}
+              onClick={() => {
+                if (isLockedByPaywall) {
+                  onRequirePaidAccess();
+                }
+              }}
               className={`rounded-3xl border-2 p-5 sm:p-6 flex flex-col justify-between transition-all ${
                 unlocked
                   ? 'border-slate-200 bg-white shadow-sm hover:border-[#0B1528]'
+                  : isLockedByPaywall
+                  ? 'border-slate-200/80 bg-white/90 hover:border-amber-400 cursor-pointer'
                   : 'border-slate-200/70 bg-slate-100/70 opacity-85'
               }`}
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="px-3 py-1 rounded-xl bg-[#0B1528] text-amber-300 font-extrabold text-xs">
-                    Q1 to Q{test.questions.length}
-                  </span>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-xl bg-[#0B1528] text-amber-300 font-extrabold text-xs">
+                      Q1 to Q{test.questions.length}
+                    </span>
+                    {isFreeTest && (
+                      <span
+                        data-testid="mock-test-1-free-badge"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-extrabold tracking-wide shadow-2xs"
+                      >
+                        FREE
+                      </span>
+                    )}
+                  </div>
 
                   {isCompleted ? (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-extrabold">
                       <CheckCircle2 className="w-3.5 h-3.5" /> Completed
                     </span>
                   ) : unlocked ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 text-xs font-extrabold">
-                      <Unlock className="w-3.5 h-3.5" /> Available
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-extrabold">
+                      <Unlock className="w-3.5 h-3.5" />{' '}
+                      {isFreeTest ? 'Free & Unlocked' : 'Available'}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200 text-slate-700 text-xs font-bold">
@@ -1357,19 +1461,25 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
                     <button
                       type="button"
                       data-testid={`start-mock-test-btn-${test.testNumber}`}
-                      onClick={() => handleStartMockTest(test)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartMockTest(test);
+                      }}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-[#0B1528] hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                     >
                       <Play className="w-4 h-4 text-amber-400" />
                       {isCompleted
                         ? `Reattempt ${test.title}`
+                        : isFreeTest
+                        ? `Start Free ${test.title}`
                         : `Start ${test.title}`}
                     </button>
 
                     {bestAttempt && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setInspectingAttemptId(bestAttempt.attemptId);
                           onChangeSubTab('my-tests');
                         }}
@@ -1379,6 +1489,19 @@ export const MockCbtExamView: React.FC<MockCbtExamViewProps> = ({
                       </button>
                     )}
                   </>
+                ) : isLockedByPaywall ? (
+                  <button
+                    type="button"
+                    data-testid={`locked-mock-test-btn-${test.testNumber}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRequirePaidAccess();
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#F5A623] hover:bg-[#E09112] text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Unlock {test.title} (₹100)
+                  </button>
                 ) : (
                   <button
                     type="button"
